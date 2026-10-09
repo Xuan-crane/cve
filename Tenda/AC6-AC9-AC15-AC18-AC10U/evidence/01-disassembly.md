@@ -83,8 +83,8 @@ if (index == NULL) { printf(...); }
 ## sprintf in the same function
 
 The function writes the `index` value into a stack buffer with `sprintf`, at two sites.
-The buffer is at `[fp-28]` and the saved frame pointer is at `[fp]`, so 28 bytes are
-available before the frame is corrupted.
+The destination is `s` at `[fp-28]`; the other locals of the function sit immediately above
+it (see the layout below).
 
 ```
 ; sprintf(buf, "%s;%s", index, "0")
@@ -110,10 +110,22 @@ available before the frame is corrupted.
 09b928  bl   sprintf@plt
 ```
 
-Neither call bounds the length, so an `index` value of 22 bytes or more overwrites the
-saved frame pointer (`len(index) + 3` bytes are written). This is the defect covered by the
-existing CVEs, and it needs a long value, which is the opposite of the condition for the
-NULL dereference.
+Neither call bounds the length. The destination is `s`, a small stack buffer at `[fp-28]`,
+sitting immediately below the other locals of this function:
+
+```
+char  s[4];    // fp-28   <- sprintf destination
+char  v10;     // fp-24
+int   v11;     // fp-20   message type
+char *nptr;    // fp-16   the index pointer
+```
+
+`len(index) + 3` bytes are written (`index` + `;` + the literal + the terminator), so the
+write runs into `v10`, `v11` and `nptr` before it reaches the saved frame pointer at `[fp]`.
+
+Measured on this build, an `index` value of 20 bytes is handled normally and 22 bytes
+crashes the process. This is the defect covered by the existing CVEs, and it needs a long
+value, which is the opposite of the condition for the NULL dereference.
 
 A third `sprintf` in the function builds a debug message from two constants and does not
 involve `index`:

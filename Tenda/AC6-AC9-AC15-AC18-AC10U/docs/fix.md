@@ -28,8 +28,8 @@ Or give the parameter a default that is not NULL:
 + index = websGetVar(wp, "index", "");
 ```
 
-With an empty string `atoi` returns 0 and the later `sprintf` writes a few bytes into a
-24-byte buffer.
+With an empty string `atoi` returns 0 and the later `sprintf` writes three bytes into the
+buffer.
 
 The two neighbouring handlers already do this. `formWifiWpsStart`:
 
