@@ -78,7 +78,7 @@ if (index == NULL) { printf(...); }
 09a414  bl   atoi@plt
 ```
 
-`formWifiStatus` (`0x99f28`) has the same shape.
+`formWifiStatus` (function at `0x9991c`, same getVar call at `0x99f28`) has the same shape.
 
 ## sprintf in the same function
 
