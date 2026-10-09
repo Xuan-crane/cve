@@ -16,10 +16,10 @@ No entry describes a missing or empty parameter, and no entry is CWE-476.
 
 | | Existing CVEs | This issue |
 | --- | --- | --- |
-| Operation | `sprintf(buf[24], "%s;%s", index, "1")` | `atoi(index)` |
+| Operation | `sprintf(buf, "%s;%s", index, "0"/"1")` at `0x9b87c` / `0x9b928` | `atoi(index)` |
 | CWE | CWE-121 (also 120/787/119) | CWE-476 |
 | Input | `index`, 22 bytes or longer | `index` absent or empty |
-| Fault | in httpd at `0x9b85c`-`0x9b87c`, on return | in libc `strtol` at `0x3fdedafc`, immediately |
+| Fault | in httpd, on return from the function | in libc `strtol` at `0x3fdedafc`, immediately |
 | Response before dying | 200 OK, then crash | none |
 | Fix | bound the length | add the NULL check |
 

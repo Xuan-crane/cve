@@ -135,9 +135,17 @@ stub. `evidence/` holds the raw captures.
 ## Relationship to the previously reported buffer overflow
 
 The `index` parameter of the same function is already covered by several CVE IDs, all of them
-stack buffer overflows from `sprintf(buf[24], "%s;%s", index, "1")` at `0x9b85c`. That
-overflow needs a value of 22 bytes or more; this defect needs no value at all, so the two
-triggers cannot both apply to one request.
+stack buffer overflows. The function builds a message with `sprintf` at two sites, both into
+the same stack buffer at `[fp-28]`:
+
+```
+0x9b87c   sprintf(buf, "%s;%s", index, "0")
+0x9b928   sprintf(buf, "%s;%s", index, "1")
+```
+
+Neither bounds the length. Measured on the AC9 build, an `index` value of 20 bytes is
+handled normally and 22 bytes crashes the process, so the threshold sits at 22 bytes. This
+defect needs no value at all, so the two triggers cannot both apply to one request.
 
 | | Overflow (existing CVEs) | This issue |
 | --- | --- | --- |
