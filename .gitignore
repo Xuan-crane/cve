@@ -1,0 +1,6 @@
+# --- 通用忽略 ---
+*.pyc
+__pycache__/
+.venv/
+.DS_Store
+Thumbs.db
