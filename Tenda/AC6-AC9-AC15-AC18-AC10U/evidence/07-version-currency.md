@@ -61,7 +61,8 @@ tested.
 
 ## End of life
 
-The AC6 and AC15 product pages are marked 已退市.
+The AC6 and AC15 product pages are marked 已退市 (discontinued), which is why the newest
+release for both is from 2017.
 
 ## AC9 v3.0
 

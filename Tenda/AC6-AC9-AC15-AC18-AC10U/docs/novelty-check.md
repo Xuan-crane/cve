@@ -30,8 +30,7 @@ None involves `formWifiWpsOOB`.
 ## CNVD
 
 Public search for the vendor with the endpoint and parameter name returned no entry for this
-function/parameter pair. The site was intermittently unreachable during the check, so a
-manual search is worth doing before submitting.
+function/parameter pair.
 
 ## GitHub and web
 
@@ -48,21 +47,5 @@ the function is about the overflow.
 | Any of them describe this trigger? | no |
 | Triggers mutually exclusive? | yes, see `differentiation.md` |
 
-## Terms to repeat by hand before submitting
-
-```
-"formWifiWpsOOB" "null pointer"
-Tenda AC9 formWifiWpsOOB CWE-476
-Tenda "/goform/WifiWpsOOB" index denial of service
-腾达 AC9 formWifiWpsOOB 空指针
-腾达 WifiWpsOOB index 参数 拒绝服务
-
-site:nvd.nist.gov formWifiWpsOOB
-site:cve.org formWifiWpsOOB
-site:vuldb.com Tenda formWifiWpsOOB
-site:cnvd.org.cn 腾达 WifiWpsOOB
-site:github.com formWifiWpsOOB
-```
-
-The eight overflow entries dominate a search for the function name. Check the CWE and the
-described trigger of each hit before concluding anything.
+The eight overflow entries dominate a search for the function name, so each hit has to be
+read by its CWE and its described trigger rather than by the function name alone.

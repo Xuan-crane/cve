@@ -80,4 +80,13 @@ false positives and the rest were not checked individually, so they are not coun
 
 ## Scripts
 
-`hunt_final.py` implements the criterion above; `hunt_family.py` implements the looser one.
+Both scanners are in `../tools/`. They read the symbol table with `readelf` and disassemble
+with `objdump`, so they need the ARM binutils and the same `httpd` the analysis used:
+
+```
+python3 ../tools/hunt_final.py   <path to httpd>     # the criterion above
+python3 ../tools/hunt_family.py  <path to httpd>     # the looser one
+```
+
+`hunt_final.py` prints the table above and ends with the one site. Only the two wrapper
+addresses are AC9-specific; another build needs them adjusted in the `HELPERS` tuple.

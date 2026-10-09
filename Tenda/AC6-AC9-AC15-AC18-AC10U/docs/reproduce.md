@@ -29,26 +29,17 @@ Look for:
 
 ## Crash under the debugger
 
+Start the target with the gdb stub:
+
 ```
-# guest, with the gdb stub
 setsid qemu-arm -g 1234 -L ./ bin/httpd &
+```
 
-# debugger
-cat > /tmp/cmds.txt <<'EOF'
-set architecture arm
-set pagination off
-set confirm off
-target remote 127.0.0.1:1234
-continue
-info registers r0 r1 r2 r3 r6 pc lr sp
-x/8i $pc-16
-p/x $r6
-x/4xb $r6
-x/400xw $sp
-quit
-EOF
+Attach with the session in `../gdb-session.txt`, after pointing it at your unpacked
+`httpd` and your stub address:
 
-gdb-multiarch -q -batch -x /tmp/cmds.txt > capture.txt
+```
+gdb-multiarch -q -x ../gdb-session.txt > capture.txt
 ```
 
 Trigger it from another shell:
@@ -71,14 +62,15 @@ except Exception as e:
 Expected in `capture.txt`:
 
 ```
+Breakpoint 1, 0x0009b720 in formWifiWpsOOB ()
+argument passed to atoi   r0 = 0x0
+#0  0x0009b720 in formWifiWpsOOB ()
+#1  0x00017110 in websFormHandler ()
 Program received signal SIGSEGV, Segmentation fault.
-r0 = 0x0   r6 = 0x0   pc = 0x3fdedafc
+r0 = 0x0    r6 = 0x0    pc = 0x3fdedafc
 => 0x3fdedafc:  ldrb  r3, [r6]
-$1 = 0x0
 Cannot access memory at address 0x0
 ```
-
-The 400-word stack dump contains `0x0009b724`, the return address of the `atoi` call.
 
 ## Two-case check
 
@@ -94,18 +86,10 @@ Expected:
 [4/4] confirming the service is gone -> HTTP = 000
 ```
 
-## Screenshots
+## Whole-binary scan
 
-If images are wanted, capture the terminal output of the three sections above:
-
-| File | Content |
-| --- | --- |
-| `01-disassembly.png` | the objdump region, with `atoi` and the later `cmp #0` marked |
-| `02-gdb-crash.png` | the SIGSEGV block with registers and faulting instruction |
-| `03-fault-address.png` | `$1 = 0x0` and `Cannot access memory at address 0x0` |
-| `04-caller-on-stack.png` | the stack line containing `0x0009b724` |
-| `05-trigger-ab.png` | the `poc.sh` output |
-| `06-all-models.png` | the table in `evidence/06-per-model-verification.md` |
+The scanners behind `evidence/05-uniqueness-scan.md` are in `../tools/`; see that file for
+the criterion and the invocation.
 
 ## Environment notes
 

