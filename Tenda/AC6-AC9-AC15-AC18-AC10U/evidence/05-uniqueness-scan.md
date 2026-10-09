@@ -1,104 +1,83 @@
-# Evidence 05 — Whole-Binary Uniqueness Scan
+# Whole-binary scan for the same pattern
 
-Purpose: rule out the objection *"this is just how the codebase is written"* — i.e. show
-that the missing guard is an isolated mistake, not a systemic pattern that would make the
-finding unremarkable.
+The AC9 `httpd` was scanned to check whether the missing guard is an isolated case or a
+pattern that appears throughout the code. The whole `.text` is 205,838 instructions.
 
-Target: Tenda AC9 v1.0 `bin/httpd` — **205,838 instructions** across the whole `.text`.
+## Getter family
 
----
-
-## 1. Identifying the parameter-getter family
-
-The getters used by the form handlers resolve to a three-level chain:
+The form handlers read parameters through a three-level chain:
 
 ```
-formWifiWpsOOB ── bl ──> 0x9e0b8   (wrapper that overrides the default)
-                            └── bl ──> 0x2b9d4   (core wrapper: getVar(wp, name, default))
-                                          └── bl ──> 0x1fb3c   (real lookup implementation)
+formWifiWpsOOB -> 0x9e0b8 (wrapper) -> 0x2b9d4 (core wrapper) -> 0x1fb3c (lookup)
 ```
 
-Both wrappers implement `websGetVar(wp, name, default)` semantics: they take the request
-context, a parameter name and a default value, and return a pointer into the request (or
-the default).
+Both wrappers take (wp, name, default) and return the default when the parameter is absent.
+`0x2b9d4` is called from 486 sites and `0x9e0b8` from about 25, so the family is 511 call
+sites.
 
-The core wrapper `0x2b9d4` is invoked from **486** sites; the outer wrapper `0x9e0b8` from
-about **25** — together **511 call sites**, which is the complete family.
+The other common getter in this binary, the imported `GetValue` (`0xf528`, 1130 call
+sites), returns a status code and writes into an output buffer, so it never returns a NULL
+pointer. It is not part of this defect class. The framework call sites of the lookup
+`0x1fb3c` (`websDefaultHandler`, `websFormHandler`, `error`, `websAccept`) are not followed
+by an `atoi`.
 
-For completeness, the other high-frequency getter in this binary, the imported
-`GetValue` (`0xf528`, 1130 call sites), was examined and excluded: its signature returns a
-status code and writes into an output buffer, so it cannot return a `NULL` pointer and is
-not part of this defect class. None of the framework call sites of the real lookup
-(`0x1fb3c` — in `websDefaultHandler`, `websFormHandler`, `error`, `websAccept`) is followed
-by an `atoi` within the next 12 instructions.
+## Criterion
 
-## 2. Scan criterion
+A site is flagged when the getter is called with a NULL default (the last write to `r2`
+before the `bl` is `mov r2, #0`) and the returned pointer reaches a callee without a
+preceding `ldr rX, [fp, #-S]` + `cmp rX, #0` on that stack slot.
 
-A site is flagged when **both** hold:
+## Result
 
-1. the getter is called with a **`NULL` default** — the last write to `r2` before the
-   `bl` is `mov r2, #0`; and
-2. the returned pointer is loaded into `r0` and passed to a callee **without** a preceding
-   `ldr rX, [fp, #-S]` + `cmp rX, #0` guard on that stack slot.
+| Site | Function | Slot | Verdict |
+| --- | --- | --- | --- |
+| 0x2b798 | near `websAccept` | -28 | stored for later use |
+| 0x95e28 | `formWifiMacFilterGet` | -28 | guarded |
+| 0x96370 | `formWifiMacFilterSet` | -36 | guarded |
+| 0x99f28 | `formWifiStatus` | -24 | guarded |
+| 0x9a374 | `formWifiWpsStart` | -24 | guarded |
+| 0x9b6c0 | `formWifiWpsOOB` | -16 | unguarded |
+| 0x9ba5c | unnamed, after `formWifiWpsOOB` | -24 | stored for later use |
+| 0x9e0f4 | inside the getter wrapper | -16 | guarded |
 
-## 3. Result
+One site in the binary meets the criterion.
 
-| Getter call site | Containing function | Slot | Verdict |
-|---|---|---|---|
-| `0x2b798` | near `websAccept` | -28 | stored for later use (framework path) |
-| `0x95e28` | `formWifiMacFilterGet` | -28 | guarded |
-| `0x96370` | `formWifiMacFilterSet` | -36 | guarded |
-| `0x99f28` | `formWifiStatus` | -24 | guarded |
-| `0x9a374` | `formWifiWpsStart` | -24 | guarded |
-| **`0x9b6c0`** | **`formWifiWpsOOB`** | **-16** | **UNGUARDED** |
-| `0x9ba5c` | (unnamed, after `formWifiWpsOOB`) | -24 | stored for later use |
-| `0x9e0f4` | inside the getter wrapper itself | -16 | guarded |
+## Checked against the emulated target
 
-**Exactly one site in the entire binary** meets the criterion: the one described in this
-repository.
+| Site | Scanner says | Missing `index` on the device |
+| --- | --- | --- |
+| `formWifiStatus` | guarded | 200 OK, no crash |
+| `formWifiWpsStart` | guarded | 200 OK, no crash |
+| `formWifiWpsOOB` | unguarded | no response, process gone |
 
-## 4. The scanner was validated in both directions
+The scanner was written by hand, so the two sites it called guarded were tested to make
+sure the criterion means something.
 
-A pattern scanner that only ever reports "yes" is worthless, so the two sites it
-classified as *guarded* were tested against the emulated target:
+## Sibling comparison
 
-| Site | Scanner verdict | Emulated test (missing `index`) |
-|---|---|---|
-| `formWifiStatus` | guarded | `HTTP/1.1 200 OK` — **no crash** ✔ |
-| `formWifiWpsStart` | guarded | `HTTP/1.1 200 OK` — **no crash** ✔ |
-| `formWifiWpsOOB` | unguarded | no response, process gone — **crash** ✔ |
+`formWifiWpsStart` and `formWifiStatus` read a parameter with the same name, through the
+same getter, with the same NULL default, and they check it:
 
-The negative cases confirm the criterion is meaningful: sites that look similar but have
-the guard really do not crash.
-
-## 5. Stronger form of the same argument: sibling comparison
-
-The two neighbouring handlers read **a parameter with the same name**, using the same
-getter, with the same `NULL` default — and they guard it. Only `formWifiWpsOOB` does not:
-
-```asm
-; formWifiWpsStart (correct)
+```
+; formWifiWpsStart
 09a3e0  ldr  r3, [fp, #-24]
-09a3e4  cmp  r3, #0            ; guard first
+09a3e4  cmp  r3, #0
 09a3e8  bne  0x9a410
 09a410  ldr  r0, [fp, #-24]
 09a414  bl   atoi
 
-; formWifiWpsOOB (this defect)
+; formWifiWpsOOB
 09b71c  ldr  r0, [fp, #-16]
-09b720  bl   atoi              ; no guard
-09b74c  cmp  r3, #0            ; guard 44 bytes later
+09b720  bl   atoi
+09b74c  cmp  r3, #0
 ```
 
-## 6. Scope note (avoiding over-claiming)
+## Scope
 
-The statement "only one site" is bounded by the definition above: the `websGetVar`-semantics
-getter family, i.e. the 511 call sites of `0x9e0b8` and `0x2b9d4`. A deliberately looser
-criterion (deriving the callee set dynamically per function) surfaces additional candidate
-sites — the two that were tested turned out to be false positives, and the remainder were
-not individually confirmed, so they are **not** claimed here.
+"One site" refers to the 511 call sites of the two wrappers above. A looser criterion that
+derives the callee set per function surfaces more candidates; the two that were tested were
+false positives and the rest were not checked individually, so they are not counted here.
 
-## Reproducing the scan
+## Scripts
 
-`hunt_final.py` in the analysis bundle performs section 2 over the whole `.text` and prints
-the table in section 3. `hunt_family.py` implements the looser criterion used in section 6.
+`hunt_final.py` implements the criterion above; `hunt_family.py` implements the looser one.

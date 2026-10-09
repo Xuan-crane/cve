@@ -1,97 +1,54 @@
-# Differentiation From the Existing CVEs on the Same Function and Parameter
+# Relationship to the existing CVEs
 
-This is the single most important document for the submission, because the same function
-and the same parameter have already been assigned multiple CVE IDs.
+The `index` parameter of `formWifiWpsOOB` is already covered by several CVE IDs. All of them
+are stack buffer overflows. This report describes a separate defect.
 
-**If a reviewer concludes "this is the same vulnerability seen from another angle", the
-report is closed as a duplicate.** The material below exists to make that conclusion
-impossible to reach honestly.
+## What exists
 
----
+Searching NVD for the function returns eight entries, in the buffer overflow classes
+(CWE-120, CWE-121, CWE-787, CWE-119). Their descriptions read like:
 
-## 1. What already exists
+> the manipulation of the argument index leads to a stack-based buffer overflow
 
-Searching NVD for this function returns **eight** entries, every one of them a memory
-corruption / buffer overflow class:
+No entry describes a missing or empty parameter, and no entry is CWE-476.
 
-| CWE family | Meaning |
-|---|---|
-| CWE-120 | Buffer Copy without Checking Size of Input |
-| CWE-121 | Stack-based Buffer Overflow |
-| CWE-787 | Out-of-bounds Write |
-| CWE-119 | Improper Restriction of Operations within the Bounds of a Memory Buffer |
+## Comparison
 
-Representative description wording from those entries:
+| | Existing CVEs | This issue |
+| --- | --- | --- |
+| Operation | `sprintf(buf[24], "%s;%s", index, "1")` | `atoi(index)` |
+| CWE | CWE-121 (also 120/787/119) | CWE-476 |
+| Input | `index`, 22 bytes or longer | `index` absent or empty |
+| Fault | in httpd at `0x9b85c`-`0x9b87c`, on return | in libc `strtol` at `0x3fdedafc`, immediately |
+| Response before dying | 200 OK, then crash | none |
+| Fix | bound the length | add the NULL check |
 
-> *"…the manipulation of the argument index leads to a stack-based buffer overflow…"*
+## Triggers do not overlap
 
-None of them is a NULL-pointer defect, and searching NVD for a NULL-pointer issue on this
-function returns nothing.
+A long value takes the `sprintf` path. The pointer is non-NULL, so `atoi` cannot fault. An
+absent value takes the `atoi` path, and there is no value to overrun the buffer. Neither
+input can reach the other's faulting instruction.
 
-## 2. Side-by-side
+| Input | Overflow | NULL dereference | Observed |
+| --- | --- | --- | --- |
+| `index=1` | no | no | 200 OK |
+| `index=` + 22 bytes or more | yes | no | overflow |
+| `index` absent | no | yes | crash |
 
-| | Existing CVEs | **This finding** |
-|---|---|---|
-| Vulnerable operation | `sprintf(buf[24], "%s;%s", index, "1")` | `atoi(index)` |
-| CWE | CWE-121 (also 120/787/119) | **CWE-476 — NULL Pointer Dereference** |
-| What the attacker must send | `index` with **length >= 22 bytes** | `index` **absent**, or present but empty |
-| Where it faults | inside `httpd`, addresses `0x9b85c`–`0x9b87c`, corrupting the saved frame; dies on return | inside libc `strtol`, program counter `0x3fdedafc`, reading address `0x0` |
-| Server response before dying | `200 OK`, then the crash | **no response at all** |
-| Minimal proof | a 22+ byte value | one request, no parameters |
-| Fix | bound the length / use `snprintf` | add the missing NULL check |
+## Different faulting instruction and different library
 
-## 3. The two triggers are mutually exclusive
+The overflow corrupts the stack inside httpd and takes effect when the function returns.
+This defect faults inside the C library before any output is produced, with fault address
+`0x0`. See `evidence/02-gdb-crash.md` and `evidence/03-strtol-crosscheck.md`.
 
-This is the strongest argument, and it is empirical rather than interpretive:
+## One omission, not a pattern
 
-- Sending a **long** value (`index=` + many bytes) exercises the `sprintf` path. The pointer
-  is non-NULL, so the `atoi` call cannot fault.
-- Sending **no** value exercises the `atoi` path. There is no value to overrun the buffer,
-  so the `sprintf` path cannot fault.
+Across the binary there is one unguarded NULL-default getter use
+(`evidence/05-uniqueness-scan.md`). The two neighbouring handlers read a parameter with the
+same name and guard it. So this is a distinct line of code that a fix for the overflow
+would not touch.
 
-Each trigger is incapable of reaching the other defect's faulting instruction. They are
-therefore two separate defects that happen to live in the same function — not one defect
-observed twice.
+## Shape of the entry
 
-Measured confirmation:
-
-| Input | Overflow path | NULL path | Observed |
-|---|---|---|---|
-| `index=1` | not reachable (too short) | not reachable (non-NULL) | `200 OK` |
-| `index=` + 22+ bytes | reachable | not reachable | overflow |
-| `index` absent | not reachable | reachable | **NULL dereference** |
-
-## 4. Different faulting instruction, different library
-
-The overflow corrupts the stack inside `httpd` and manifests when the function returns.
-This defect terminates immediately inside the C library, before any output is produced.
-The debugger shows the program counter inside `strtol`, with the fault address exactly
-`0x0` — see `evidence/02-gdb-crash.md` and `evidence/03-strtol-crosscheck.md`.
-
-A signature difference of this kind is the standard way CNAs separate defects that share a
-parameter, and the fault address `0x0` is unambiguous.
-
-## 5. It is one omission among correctly-written siblings
-
-Across the whole binary there is exactly one unguarded `NULL`-default getter use
-(`evidence/05-uniqueness-scan.md`), while the two neighbouring handlers read the *same
-parameter name* and guard it properly. So this cannot be characterised as "the known
-overflow, described differently" — the source-level mistake is a distinct line of code
-that the existing CVEs' fixes would not touch.
-
-## 6. Novelty check performed
-
-- **NVD REST API**, `keywordSearch=formWifiWpsOOB` → 8 CVEs, all overflow-class, none
-  CWE-476.
-- **NVD REST API**, `keywordSearch=Tenda null pointer` → 5 CVEs, all CWE-476, but in
-  entirely different functions (`websReadEvent` / `/goform/GetIPTV`, `wifiScheduledSet` /
-  `/goform/modules`).
-- **CNVD** public search → no entry for this function/parameter pair in this class.
-
-Conclusion: no existing record covers this defect.
-
-## 7. Precedent for how this should be numbered
-
-CVE-2024-10280 is a single CWE-476 entry covering ten Tenda models with the same defect.
-That is the appropriate shape here: **one CVE, several affected models**, rather than a
-separate ID per device.
+CVE-2024-10280 is a single CWE-476 entry covering ten Tenda models with the same defect,
+which is the shape used here: one CVE for several models rather than one per model.

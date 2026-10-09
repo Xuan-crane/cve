@@ -8,8 +8,6 @@
 # The script performs a baseline request (index present, expected 200) and then
 # the trigger request (index absent, expected crash), and reports whether the
 # web service survived.
-#
-# For defensive / authorised testing only.
 # ---------------------------------------------------------------------------
 set -u
 

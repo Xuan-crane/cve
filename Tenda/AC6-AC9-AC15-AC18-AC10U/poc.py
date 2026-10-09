@@ -8,8 +8,6 @@ Reproduction with an explicit verdict. Performs a two-case comparison:
     trigger  : POST without 'index'        -> expected no response and a dead service
 
     usage: python3 poc.py [target-ip] [--port N]
-
-For defensive / authorised testing only.
 """
 import argparse
 import socket
