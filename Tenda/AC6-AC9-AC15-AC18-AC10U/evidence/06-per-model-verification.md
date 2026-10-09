@@ -97,6 +97,28 @@ the MIPSEL build contains the same handler implementation.
 
 Five devices, two architectures, one defect.
 
+## Re-verification (independent fresh run)
+
+All five devices were run again on 2026-10-09 from clean container instances, to confirm the
+records above were not dependent on a particular environment. Each device was started from
+its image, allowed to reach a listening state, and then driven through the same three steps.
+
+| Device | Started | Cookie obtained | A (index present) | B (index absent) | C (reconnect) |
+|---|---|---|---|---|---|
+| AC6 | 16:52:27 | `302` → `password=twhcvb` | `200 OK`, process alive | no response, process gone | `ConnectionRefusedError` |
+| AC18 | 16:52:48 | `302` → `password=catcvb` | `200 OK`, process alive | no response, process gone | `ConnectionRefusedError` |
+| AC15 | 16:53:10 | `302` → `password=bwqcvb` | `200 OK`, process alive | no response, process gone | `ConnectionRefusedError` |
+| AC9 v1.0 | 16:53:46 | `302` → `password=gnhcvb` | `200 OK`, process alive | no response, process gone | `ConnectionRefusedError` |
+| AC10U | 17:05 | `302` → `password=auycvb` | `200 OK` | no response, service gone | `ConnectionRefusedError` |
+
+AC10U runs under `qemu-mipsel-static`, so a process-name based liveness probe that looks for
+`qemu-arm` reports zero for this device; its service process was confirmed separately in the
+process list (`/qemu-user/qemu-mipsel-static /bin/httpd`). The HTTP-level observations above
+are unaffected.
+
+Raw transcripts for this run are preserved in the analysis bundle
+(`verify5/AC6.txt`, `AC9.txt`, `AC15.txt`, `AC18.txt`, `AC10U.txt`).
+
 ## Environment
 
 QEMU user-mode emulation (`qemu-arm` for the ARM builds, `qemu-mipsel-static` for AC10U)
