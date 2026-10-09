@@ -91,24 +91,11 @@ the same value appeared.
 
 ## Commands
 
-```
-# guest
-qemu-arm -g 1234 -L ./ bin/httpd
+The session is in `../gdb-session.txt` at the root of this entry:
 
-# debugger
-cat > cmds.txt <<'EOF'
-set architecture arm
-set pagination off
-set confirm off
-target remote 127.0.0.1:1234
-continue
-printf "r0=0x%x r6=0x%x pc=0x%x\n", $r0, $r6, $pc
-x/8i $pc-16
-p/x $r6
-x/4xb $r6
-x/400xw $sp
-quit
-EOF
-
-gdb-multiarch -q -batch -x cmds.txt
 ```
+gdb-multiarch -q -x gdb-session.txt
+```
+
+It needs the httpd binary (for symbols) and the QEMU gdb stub address, both of which are
+set at the top of that file. Start the target with `qemu-arm -g 1234 -L ./ bin/httpd`.

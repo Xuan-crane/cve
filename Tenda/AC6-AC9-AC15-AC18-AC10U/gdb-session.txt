@@ -1,0 +1,40 @@
+# Debugger session that produced evidence/02.
+#
+#   gdb-multiarch -q -x gdb-session.txt
+#
+# Two paths need adjusting for your setup:
+#   - the httpd binary, so gdb has the symbol table (it is ET_EXEC, so the
+#     link-time addresses match the runtime addresses)
+#   - the host and port of the QEMU gdb stub
+#
+# Start the target with:   qemu-arm -g 1234 -L ./ bin/httpd
+# then send a POST or GET to /goform/WifiWpsOOB that omits the index parameter.
+
+set architecture arm
+set pagination off
+set confirm off
+set auto-solib-add off
+
+file /tmp/ac9re/squashfs-root/bin/httpd
+target remote 127.0.0.1:32971
+
+# formWifiWpsOOB+0xac, the atoi call; the NULL check is at +0xd8
+break *0x9b720
+continue
+
+printf "\n===== breakpoint hit: the atoi call in formWifiWpsOOB =====\n"
+printf "argument passed to atoi   r0 = 0x%x\n\n", $r0
+x/3i $pc-4
+printf "\ncall stack:\n"
+bt
+
+printf "\n===== continue: hand that pointer to atoi =====\n"
+continue
+
+printf "\n===== crash inside atoi =====\n"
+printf "r0 = 0x%x    r6 = 0x%x    pc = 0x%x\n\n", $r0, $r6, $pc
+x/2i $pc
+printf "\nread the address this pointer points to:\n"
+x/4xb $r0
+
+quit
